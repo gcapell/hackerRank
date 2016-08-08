@@ -1,8 +1,6 @@
 package main
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func main() {
 	var n, d int
@@ -11,26 +9,30 @@ func main() {
 	for j := range a {
 		fmt.Scanf("%d", &a[j])
 	}
-	j,k,l := 0,1,2
-	for ; j<n; j++ {
-		kTarget := a[j] +d
-		for ; k<n && a[k] <= kTarget; k++ {
-			if a[k] == kTarget {
-				lTarget := kTarget + d
-				for l := k+
-				
-			}
+	var triples int
+	j, k, l := 0, 1, 2
+	for ; ; j++ {
+		kTarget := a[j] + d
+		for ; k < n && a[k] < kTarget; k++ {
 		}
-		
-	}
-}
-
-func minWidth(widths []int) int {
-	var m int
-	for j, w := range widths {
-		if j == 0 || w < m {
-			m = w
+		if k == n {
+			break
+		}
+		if a[k] != kTarget {
+			continue
+		}
+		if k+1 > l {
+			l = k + 1
+		}
+		lTarget := kTarget + d
+		for ; l < n && a[l] < lTarget; l++ {
+		}
+		if l == n {
+			break
+		}
+		if a[l] == lTarget {
+			triples++
 		}
 	}
-	return m
+	fmt.Println(triples)
 }
