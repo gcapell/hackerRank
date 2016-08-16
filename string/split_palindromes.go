@@ -5,8 +5,30 @@ import "fmt"
 func main() {
 	var a, b string
 	fmt.Scanf("%s\n%s", &a, &b)
+	g := NewSuffixGenerator(a, 1, false)
+	l := g.next()
+	for !l.empty() {
+		c, pos, id := l.next()
+		fmt.Println(string(c), pos, id)
+	}
+
+	fmt.Println("*****************")
+	l = g.next()
+	for !l.empty() {
+		c, pos, id := l.next()
+		fmt.Println(string(c), pos, id)
+	}
 	pals(a)
-	pals(b)
+
+	//pals(b)
+}
+
+// pals prints palindromes found in s
+func pals(s string) {
+	root := New()
+	root.addSuffixes(NewSuffixGenerator(s, 0, true))
+	root.addSuffixes(NewSuffixGenerator(s, 1, false))
+	root.pprint("")
 }
 
 type node struct {
@@ -22,9 +44,9 @@ func New() *node {
 }
 
 // addSuffixes adds suffixes of s
-func (n *node) addSuffixes(s string, id int) {
-	for j := 0; j < len(s); j++ {
-		n.add(s[j:], id, j)
+func (n *node) addSuffixes(s *suffixGenerator) {
+	for !s.empty() {
+		n.add(s.next())
 	}
 }
 
@@ -37,31 +59,74 @@ func (n *node) pprint(indent string) {
 	}
 }
 
-func (n *node) add(s string, id, start int) {
-	c, s := s[0], s[1:]
+type stringIterator struct {
+	s       string
+	pos     int
+	forward bool
+	id      int
+}
+
+type letterGenerator struct {
+	stringIterator
+}
+
+func (g *stringIterator) empty() bool {
+	if g.forward {
+		return g.pos == len(g.s)
+	}
+	return g.pos == -1
+}
+
+func (g *stringIterator) advance() {
+	if g.forward {
+		g.pos++
+	} else {
+		g.pos--
+	}
+}
+
+func (g *letterGenerator) next() (byte, int, int) {
+	defer func() { g.advance() }()
+	return g.s[g.pos], g.pos, g.id
+}
+
+type suffixGenerator struct {
+	stringIterator
+}
+
+func NewSuffixGenerator(s string, id int, forward bool) *suffixGenerator {
+	pos := 0
+	if !forward {
+		pos = len(s) - 1
+	}
+	return &suffixGenerator{
+		stringIterator{
+			s:       s,
+			pos:     pos,
+			forward: forward,
+			id:      id,
+		}}
+}
+
+func (s *suffixGenerator) next() *letterGenerator {
+	defer func() { s.advance() }()
+	return &letterGenerator{stringIterator{
+		s.s,
+		s.pos,
+		s.forward,
+		s.id,
+	}}
+}
+
+func (n *node) add(g *letterGenerator) {
+	c, pos, id := g.next()
 	next := n.letter[c]
 	if next == nil {
 		next = New()
 		n.letter[c] = next
 	}
-	next.paths[id] = append(next.paths[id], start)
-	if len(s) > 0 {
-		next.add(s, id, start)
+	next.paths[id] = append(next.paths[id], pos)
+	if !g.empty() {
+		next.add(g)
 	}
-}
-
-// pals prints palindromes found in s
-func pals(s string) {
-	root := New()
-	root.addSuffixes(s, 0)
-	root.addSuffixes(reverse(s), 1)
-	root.pprint("")
-}
-
-func reverse(s string) string {
-	b := []byte(s)
-	for j, k := 0, len(b)-1; j < k; j, k = j+1, k-1 {
-		b[j], b[k] = b[k], b[j]
-	}
-	return string(b)
 }
