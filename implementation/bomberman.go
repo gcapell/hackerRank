@@ -6,13 +6,17 @@ func main() {
 	var r, c, n int
 	fmt.Scanf("%d %d %d", &r, &c, &n)
 	g := readGrid(r, c)
-	h := g.emptyCopy()
-	for j := 0; j < n; j++ {
-		g.print()
-		g.boom(h)
-		h, g = g, h
-		fmt.Println()
+	switch n % 4 {
+	case 2, 0:
+		g.blank()
+	case 3:
+		g = g.invert()
+	case 1:
+		if n > 1 {
+			g = g.invert().invert()
+		}
 	}
+	g.print()
 }
 
 type grid [][]bool
@@ -37,6 +41,14 @@ var chars = map[bool]string{
 	true:  "O",
 }
 
+func (g grid) blank() {
+	for j := 0; j < len(g); j++ {
+		for k := 0; k < len(g[0]); k++ {
+			g[j][k] = true
+		}
+	}
+}
+
 func (g grid) print() {
 	for _, r := range g {
 		for _, c := range r {
@@ -46,20 +58,15 @@ func (g grid) print() {
 	}
 }
 
-func (g grid) emptyCopy() grid {
+func (g grid) invert() grid {
 	h := make([][]bool, len(g))
 	for j := 0; j < len(h); j++ {
 		h[j] = make([]bool, len(g[j]))
-	}
-	return h
-}
-
-func (g grid) boom(h grid) {
-	for j := 0; j < len(g); j++ {
 		for k := 0; k < len(g[j]); k++ {
 			h[j][k] = !g.bombNear(j, k)
 		}
 	}
+	return h
 }
 
 func (g grid) bombNear(j, k int) bool {
