@@ -19,7 +19,9 @@ func main() {
 		prime[p] = true
 	}
 	transitions := make(map[state][]state)
-	thisState := make(map[state]int)
+	initialState := make(map[state]int)
+	stateNum := make(map[state]int)
+	nextStateNum := 0
 	for a := 0; a <= 9; a++ {
 		for b := 0; b <= 9; b++ {
 			for c := 0; c <= 9; c++ {
@@ -27,8 +29,10 @@ func main() {
 					if prime[a+b+c+d] && prime[a+b+c] && prime[b+c+d] {
 						s := state{a, b, c, d}
 						transitions[s] = nil
+						stateNum[s] = nextStateNum
+						nextStateNum++
 						if a > 0 {
-							thisState[s] = 1
+							initialState[s] = 1
 						}
 					}
 				}
@@ -38,13 +42,26 @@ func main() {
 
 	for s := range transitions {
 		for e := 0; e <= 9; e++ {
-			if prime[s.c+s.d+e] && prime[s.b+s.c+s.d+e] && prime[s.a+s.b+s.c+s.d+e] {
+			if prime[s.c+s.d+e] && 
+				prime[s.b+s.c+s.d+e] && 
+				prime[s.a+s.b+s.c+s.d+e] {
 				dest := state{s.b, s.c, s.d, e}
 				transitions[s] = append(transitions[s], dest)
 			}
 		}
 	}
+	matrixSize = len(transitions)
+	fmt.Println("size", matrixSize)
+	m := newMatrix()
+	for src, dsts := range transitions {
+		for _, dst := range dsts {
+			fmt.Println(src, stateNum[src], dst, stateNum[dst])
+			m.set(stateNum[src], stateNum[dst], 1)
+		}
+	}
+	fmt.Println(m)
 
+	thisState := initialState
 	for j := 0; j < 20; j++ {
 		internal := 0
 		nextState := make(map[state]int)
@@ -77,6 +94,18 @@ func main() {
 		fmt.Println(k, transitions[k])
 		}
 	}
+}
+
+var matrixSize int
+type matrix []int
+
+func newMatrix() matrix {
+	return matrix(make([]int,matrixSize*matrixSize))
+}
+
+func (m matrix)set(r,c,val int) {
+	fmt.Println(len(m), "set", r, c, val, r*matrixSize+c)
+	m[r*matrixSize+c] = val
 }
 
 func showState(s map[state]int) {
