@@ -18,6 +18,9 @@ func main() {
 	}
 	sort.Ints(ns)
 
+	for ns[0] < 5 {
+		ns = ns[1:]
+	}
 	prev := ns[0]
 	m = exp(prev - 4)
 	fmt.Println(m.sumCols(initialStateNums))
@@ -91,6 +94,9 @@ var expCache = make(map[int]matrix)
 var cacheHits int
 
 func exp(n int) matrix {
+	if n < 1 {
+		log.Fatal("n", n)
+	}
 	if m, ok := expCache[n]; ok {
 		cacheHits++
 		return m
@@ -118,41 +124,37 @@ func largestPowerOf2LTE(n int) int {
 	return j / 2
 }
 
-func power(powers []matrix, n int) matrix {
-	if n >= len(powers) {
-		log.Fatal("n", n)
-	}
-	if powers[n] != nil {
-		return powers[n]
-	}
-	smaller := power(powers, n-1)
-	pow := mul(smaller, smaller)
-	powers[n] = pow
-	return pow
-}
-
 var matrixSize int
 
 const modulus = 1e9 + 7
 
-type matrix []int
-
-func (m matrix) sumCols(cols []int) int {
-	reply := 0
-	for r := 0; r < matrixSize; r++ {
-		for _, c := range cols {
-			reply += m[r*matrixSize+c]
-		}
-	}
-	return reply % modulus
+type matrix struct {
+	rows, cols sparseVector
 }
 
+type sparseVector []map[int]int
+
 func newMatrix() matrix {
-	return matrix(make([]int, matrixSize*matrixSize))
+	return matrix{
+		rows: newSparseVector(),
+		cols: newSparseVector(),
+	}
+}
+
+func newSparseVector() sparseVector {
+	return make([]map[int]int, matrixSize)
 }
 
 func (m matrix) set(r, c, val int) {
-	m[r*matrixSize+c] = val
+	m.rows.set(r, c, val)
+	m.cols.set(c, r, val)
+}
+
+func (v sparseVector) set(r, c, val int) {
+	if v[r] == nil {
+		v[r] = make(map[int]int)
+	}
+	v[r][c] = val
 }
 
 var multiplies int
@@ -160,14 +162,37 @@ var multiplies int
 func mul(a, b matrix) matrix {
 	multiplies++
 	reply := newMatrix()
+
 	for r := 0; r < matrixSize; r++ {
 		for c := 0; c < matrixSize; c++ {
-			n := 0
-			for k := 0; k < matrixSize; k++ {
-				n += a[r*matrixSize+k] * b[k*matrixSize+c]
+			v := sparseDotProduct(a.rows[r], b.cols[c])
+			if v != 0 {
+				reply.set(r, c, v%modulus)
 			}
-			reply[r*matrixSize+c] = n % modulus
 		}
 	}
 	return reply
+}
+
+func sparseDotProduct(a, b map[int]int) int {
+	if a == nil || b == nil {
+		return 0
+	}
+	var reply int
+	for k, v := range a {
+		if v2, ok := b[k]; ok {
+			reply += v * v2
+		}
+	}
+	return reply
+}
+
+func (m matrix) sumCols(cols []int) int {
+	reply := 0
+	for _, c := range cols {
+		for _, v := range m.cols[c] {
+			reply += v
+		}
+	}
+	return reply % modulus
 }
