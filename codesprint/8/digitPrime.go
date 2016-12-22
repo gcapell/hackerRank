@@ -1,21 +1,42 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+	"sort"
+)
 
 func main() {
-	powers, initialStateNums := prep()
+	m, initialStateNums := prep()
+	expCache[1] = m
+
 	var q int
 	fmt.Scan(&q)
+	ns := make([]int, q)
 	for j := 0; j < q; j++ {
-		var n int
-		fmt.Scan(&n)
-		fmt.Println(exp(n-4, powers).sumCols(initialStateNums))
+		fmt.Scan(&ns[j])
 	}
+	sort.Ints(ns)
+
+	prev := ns[0]
+	m = exp(prev - 4)
+	fmt.Println(m.sumCols(initialStateNums))
+
+	for _, n := range ns {
+		diff := n - prev
+		if diff > 0 {
+			diffM := exp(diff)
+			m = mul(m, diffM)
+		}
+		fmt.Println(m.sumCols(initialStateNums))
+		prev = n
+	}
+	fmt.Println("multiplies: ", multiplies, " cacheHits: ", cacheHits)
 }
 
 type state struct{ a, b, c, d int }
 
-func prep() ([]matrix, []int) {
+func prep() (matrix, []int) {
 	prime := make([]bool, 46)
 	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43} {
 		prime[p] = true
@@ -59,33 +80,55 @@ func prep() ([]matrix, []int) {
 			m.set(stateNum[dst], stateNum[src], 1)
 		}
 	}
-	powers := []matrix{nil, m}
-	for j := 2; j < 40e3; j *= 2 {
-		m = mul(m, m)
-		powers = append(powers, m)
-	}
 	var initialStateNums []int
 	for _, s := range initialStates {
 		initialStateNums = append(initialStateNums, stateNum[s])
 	}
-	return powers, initialStateNums
+	return m, initialStateNums
 }
 
-func exp(n int, powers []matrix) matrix {
-	var m matrix
-	p := 1
-	for n > 0 {
-		if n%2 == 1 {
-			if m == nil {
-				m = powers[p]
-			} else {
-				m = mul(m, powers[p])
-			}
-		}
-		n /= 2
-		p++
+var expCache = make(map[int]matrix)
+var cacheHits int
+
+func exp(n int) matrix {
+	if m, ok := expCache[n]; ok {
+		cacheHits++
+		return m
+	}
+	p := largestPowerOf2LTE(n)
+
+	if p == n {
+		m2 := exp(n / 2)
+		m := mul(m2, m2)
+		expCache[n] = m
+		return m
+	}
+	m := mul(exp(p), exp(n-p))
+	if n < 1024 {
+		expCache[n] = m
 	}
 	return m
+}
+
+func largestPowerOf2LTE(n int) int {
+	j := 1
+	for j <= n {
+		j *= 2
+	}
+	return j / 2
+}
+
+func power(powers []matrix, n int) matrix {
+	if n >= len(powers) {
+		log.Fatal("n", n)
+	}
+	if powers[n] != nil {
+		return powers[n]
+	}
+	smaller := power(powers, n-1)
+	pow := mul(smaller, smaller)
+	powers[n] = pow
+	return pow
 }
 
 var matrixSize int
@@ -112,7 +155,10 @@ func (m matrix) set(r, c, val int) {
 	m[r*matrixSize+c] = val
 }
 
+var multiplies int
+
 func mul(a, b matrix) matrix {
+	multiplies++
 	reply := newMatrix()
 	for r := 0; r < matrixSize; r++ {
 		for c := 0; c < matrixSize; c++ {
