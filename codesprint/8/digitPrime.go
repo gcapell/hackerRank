@@ -1,25 +1,27 @@
 package main
 
-import (
-	"fmt"
-	"sort"
-)
-
-type state struct {
-	a, b, c, d int
-}
-
-func (s state) String() string {
-	return fmt.Sprintf("%d%d%d%d", s.a, s.b, s.c, s.d)
-}
+import "fmt"
 
 func main() {
+	powers, initialStateNums := prep()
+	var q int
+	fmt.Scan(&q)
+	for j := 0; j < q; j++ {
+		var n int
+		fmt.Scan(&n)
+		fmt.Println(exp(n-4, powers).sumCols(initialStateNums))
+	}
+}
+
+type state struct{ a, b, c, d int }
+
+func prep() ([]matrix, []int) {
 	prime := make([]bool, 46)
 	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43} {
 		prime[p] = true
 	}
 	transitions := make(map[state][]state)
-	initialState := make(map[state]int)
+	var initialStates []state
 	stateNum := make(map[state]int)
 	nextStateNum := 0
 	for a := 0; a <= 9; a++ {
@@ -32,7 +34,7 @@ func main() {
 						stateNum[s] = nextStateNum
 						nextStateNum++
 						if a > 0 {
-							initialState[s] = 1
+							initialStates = append(initialStates, s)
 						}
 					}
 				}
@@ -42,8 +44,8 @@ func main() {
 
 	for s := range transitions {
 		for e := 0; e <= 9; e++ {
-			if prime[s.c+s.d+e] && 
-				prime[s.b+s.c+s.d+e] && 
+			if prime[s.c+s.d+e] &&
+				prime[s.b+s.c+s.d+e] &&
 				prime[s.a+s.b+s.c+s.d+e] {
 				dest := state{s.b, s.c, s.d, e}
 				transitions[s] = append(transitions[s], dest)
@@ -51,78 +53,75 @@ func main() {
 		}
 	}
 	matrixSize = len(transitions)
-	fmt.Println("size", matrixSize)
 	m := newMatrix()
 	for src, dsts := range transitions {
 		for _, dst := range dsts {
-			fmt.Println(src, stateNum[src], dst, stateNum[dst])
-			m.set(stateNum[src], stateNum[dst], 1)
+			m.set(stateNum[dst], stateNum[src], 1)
 		}
 	}
-	fmt.Println(m)
+	powers := []matrix{nil, m}
+	for j := 2; j < 40e3; j *= 2 {
+		m = mul(m, m)
+		powers = append(powers, m)
+	}
+	var initialStateNums []int
+	for _, s := range initialStates {
+		initialStateNums = append(initialStateNums, stateNum[s])
+	}
+	return powers, initialStateNums
+}
 
-	thisState := initialState
-	for j := 0; j < 20; j++ {
-		internal := 0
-		nextState := make(map[state]int)
-		for s, count := range thisState {
-			if len(transitions[s]) == 0 {
-				continue
-			}
-			internal++
-			for _, v := range transitions[s] {
-				nextState[v] += count
-			}
-		}
-		var throughPaths, terminalPaths int
-		for s, v := range nextState {
-			if len(transitions[s]) > 0 {
-				throughPaths += v
+func exp(n int, powers []matrix) matrix {
+	var m matrix
+	p := 1
+	for n > 0 {
+		if n%2 == 1 {
+			if m == nil {
+				m = powers[p]
 			} else {
-				terminalPaths += v
+				m = mul(m, powers[p])
 			}
 		}
-		showState(nextState)
-		fmt.Println()
-		fmt.Printf("through:%d, terminal:%d\n", throughPaths, terminalPaths)
-		fmt.Printf("\n################# internal nodes:%d, total nodes: %d\n", internal, len(thisState))
-		thisState = nextState
+		n /= 2
+		p++
 	}
-	fmt.Println("internals")
-	for k := range thisState {
-		if len(transitions[k])>0 {
-		fmt.Println(k, transitions[k])
-		}
-	}
+	return m
 }
 
 var matrixSize int
+
+const modulus = 1e9 + 7
+
 type matrix []int
 
-func newMatrix() matrix {
-	return matrix(make([]int,matrixSize*matrixSize))
+func (m matrix) sumCols(cols []int) int {
+	reply := 0
+	for r := 0; r < matrixSize; r++ {
+		for _, c := range cols {
+			reply += m[r*matrixSize+c]
+		}
+	}
+	return reply % modulus
 }
 
-func (m matrix)set(r,c,val int) {
-	fmt.Println(len(m), "set", r, c, val, r*matrixSize+c)
+func newMatrix() matrix {
+	return matrix(make([]int, matrixSize*matrixSize))
+}
+
+func (m matrix) set(r, c, val int) {
 	m[r*matrixSize+c] = val
 }
 
-func showState(s map[state]int) {
-	var keys []state
-	for k := range s {
-		keys = append(keys, k)
+func mul(a, b matrix) matrix {
+	reply := newMatrix()
+	for r := 0; r < matrixSize; r++ {
+		for c := 0; c < matrixSize; c++ {
+			n := 0
+			for k := 0; k < matrixSize; k++ {
+				n += a[r*matrixSize+k] * b[k*matrixSize+c]
+			}
+			reply[r*matrixSize+c] = n % modulus
+		}
 	}
-	sort.Sort(ByState(keys))
-	for _, k := range keys {
-		fmt.Printf("%s:%d, ", k, s[k])
-	}
-}
-
-type ByState []state
-
-func (a ByState) Len() int      { return len(a) }
-func (a ByState) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
-func (a ByState) Less(i, j int) bool {
-	return a[i].String() < a[j].String()
+	return reply
 }
