@@ -12,21 +12,27 @@ const (
 	debug     = false
 )
 
-var totals [maxDigits]int
+var totals [maxDigits + 1]int
+
+type state struct{ a, b, c, d int }
+
+func (s state) String() string {
+	return fmt.Sprintf("%d%d%d%d", s.a, s.b, s.c, s.d)
+}
 
 func main() {
 	findTotals()
-
 	var q int
-	fmt.Scan(&q)
+	fmt.Scanln(&q)
 	for j := 0; j < q; j++ {
-		var n int
-		fmt.Scan(&n)
-		fmt.Println(totals[n])
+		var d int
+		fmt.Scanln(&d)
+		fmt.Println(totals[d])
 	}
 }
 
 func findTotals() {
+	start := time.Now()
 	prime := make([]bool, 46)
 	for _, p := range []int{2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43} {
 		prime[p] = true
@@ -58,92 +64,143 @@ func findTotals() {
 		}
 	}
 
-	stateNum := sequencer(make(map[state]int))
+	counts := make(map[state]int)
+	var nextCount map[state]int
 	for dst, srcs := range transitions {
-		stateNum.add(dst)
+		if dst.a != 0 {
+			counts[dst] = 1
+		}
 		for _, s := range srcs {
-			stateNum.add(s)
+			if s.a != 0 {
+				counts[s] = 1
+			}
 		}
 	}
-
-	var m1 [][2]int
-	var m2 [][3]int
-	var m3 [][4]int
-	var m4 [][5]int
-	var m5 [][6]int
-	sn := stateNum
-	for dst, srcs := range transitions {
-		switch len(srcs) {
-		case 1:
-			m1 = append(m1, [2]int{sn[dst], sn[srcs[0]]})
-		case 2:
-			m2 = append(m2, [3]int{sn[dst], sn[srcs[0]], sn[srcs[1]]})
-		case 3:
-			m3 = append(m3, [4]int{sn[dst], sn[srcs[0]], sn[srcs[1]], sn[srcs[2]]})
-		case 4:
-			m4 = append(m4, [5]int{sn[dst], sn[srcs[0]], sn[srcs[1]], sn[srcs[2]], sn[srcs[3]]})
-		case 5:
-			m5 = append(m5, [6]int{sn[dst], sn[srcs[0]], sn[srcs[1]], sn[srcs[2]], sn[srcs[3]], sn[srcs[4]]})
-		default:
-			log.Fatal("too many", len(srcs))
-		}
-	}
-
-	s1 := make([]int, len(stateNum))
-	for s, n := range stateNum {
-		if s.a != 0 {
-			s1[n] = 1
-		}
-	}
-	s2 := make([]int, len(stateNum))
-
-	totals[1] = 9 // Cheated and copied these.
+	totals[1] = 9
 	totals[2] = 90
 	totals[3] = 303
 	totals[4] = 280
 
-	start := time.Now()
-	for k := 5; k < len(totals); k++ {
+	digits := 4
+	for {
+		nextCount = make(map[state]int)
+		rd := removeEmptyDsts(transitions)
+		if debug && rd > 0 {
+			fmt.Printf("removed %d empty dst\n", rd)
+		}
+		for dst, srcs := range transitions {
+			total := 0
+			for _, s := range srcs {
+				total += counts[s]
+			}
+			nextCount[dst] = total
+		}
+		rs := removeUselessSrcs(transitions)
+		if debug && rs > 0 {
+			fmt.Printf("removed %d useless src\n", rs)
+		}
+		counts = nextCount
+		digits++
+		totals[digits] = sum(counts)
+		if rs == 0 && rd == 0 {
+			break
+		}
+	}
+
+	// Map every state to an int ID
+	seq := sequencer(make(map[state]int))
+	for dst, srcs := range transitions {
+		seq.add(dst)
+		for _, s := range srcs {
+			seq.add(s)
+		}
+	}
+
+	// Store counts of states indexing into an array with state's ID
+	nCount := make([]int, len(seq))
+	for s, val := range counts {
+		nCount[seq[s]] = val
+	}
+	nextNCount := make([]int, len(seq))
+
+	// replace transitions map with three transition slices (using IDs)
+	var t1 [][2]int
+	var t2 [][3]int
+	var t3 [][4]int
+	for dst, srcs := range transitions {
+		switch len(srcs) {
+		case 1:
+			t1 = append(t1, [2]int{seq[dst], seq[srcs[0]]})
+		case 2:
+			t2 = append(t2, [3]int{seq[dst], seq[srcs[0]], seq[srcs[1]]})
+		case 3:
+			t3 = append(t3, [4]int{seq[dst], seq[srcs[0]], seq[srcs[1]], seq[srcs[2]]})
+		default:
+			log.Fatal(dst, srcs)
+		}
+	}
+
+	for digits++; digits < len(totals); digits++ {
 		total := 0
-		if debug {
-			fmt.Println(s1)
+		for _, t := range t1 {
+			sub := nCount[t[1]]
+			nextNCount[t[0]] = sub
+			total += sub
 		}
-		for _, m := range m1 {
-			s2[m[0]] = s1[m[1]]
-			total += s1[m[1]]
+		for _, t := range t2 {
+			sub := (nCount[t[1]] + nCount[t[2]]) % modulus
+			nextNCount[t[0]] = sub
+			total += sub
 		}
-		for _, m := range m2 {
-			i := s1[m[1]] + s1[m[2]]
-			s2[m[0]] = i % modulus
-			total += i
+		for _, t := range t3 {
+			sub := (nCount[t[1]] + nCount[t[2]] + nCount[t[3]]) % modulus
+			nextNCount[t[0]] = sub
+			total += sub
 		}
-		for _, m := range m3 {
-			i := s1[m[1]] + s1[m[2]] + s1[m[3]]
-			s2[m[0]] = i % modulus
-			total += i
-		}
-		for _, m := range m4 {
-			i := s1[m[1]] + s1[m[2]] + s1[m[3]] + s1[m[4]]
-			s2[m[0]] = i % modulus
-			total += i
-		}
-		for _, m := range m5 {
-			i := s1[m[1]] + s1[m[2]] + s1[m[3]] + s1[m[4]] + s1[m[5]]
-			s2[m[0]] = i % modulus
-			total += i
-		}
-		totals[k] = total % modulus
-		s1, s2 = s2, s1
+		totals[digits] = total % modulus
+		nCount, nextNCount = nextNCount, nCount
 	}
 	if debug {
-		fmt.Printf("%d in %v\n", len(totals), time.Since(start))
+		fmt.Printf("%d in %s\n", len(totals), time.Since(start))
+		fmt.Println(totals[:20])
 	}
 }
 
-type state struct{ a, b, c, d int }
+func removeEmptyDsts(transitions map[state][]state) int {
+	del := 0
+	for s, v := range transitions {
+		if len(v) == 0 {
+			delete(transitions, s)
+			del++
+		}
+	}
+	return del
+}
 
-func (s state) String() string {
-	return fmt.Sprintf("%d%d%d%d", s.a, s.b, s.c, s.d)
+func removeUselessSrcs(transitions map[state][]state) int {
+	del := 0
+	for dst, srcs := range transitions {
+		var good []state
+		for _, s := range srcs {
+			if _, ok := transitions[s]; ok {
+				good = append(good, s)
+			}
+		}
+		if len(good) < len(srcs) {
+			transitions[dst] = good
+			del += len(srcs) - len(good)
+		}
+	}
+	return del
+}
+
+func sum(counts map[state]int) int {
+	total := 0
+	for _, v := range counts {
+		total += v
+	}
+
+	return total
 }
 
 type sequencer map[state]int
