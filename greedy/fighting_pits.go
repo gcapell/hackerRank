@@ -14,11 +14,11 @@ func main() {
 	var n, k, q int
 	fmt.Scanln(&n, &k, &q)
 	teams = make([][]int, k+1)
-	cache = make([][]cacheEntry, k+1)
+	cache = make([][]*cacheEntry, k+1)
 	for j := 1; j <= k; j++ {
-		cache[j] = make([]cacheEntry, k+1)
+		cache[j] = make([]*cacheEntry, k+1)
 		for e := 1; e <= k; e++ {
-			cache[j][e] = newCacheEntry()
+			cache[j][e] = &cacheEntry{}
 		}
 	}
 	for j := 0; j < n; j++ {
@@ -36,7 +36,7 @@ func main() {
 		case 1:
 			teams[c] = append(teams[c], b)
 		case 2:
-			if win(b, c, cache[b][c], cache[c][b]) {
+			if win(teams[b], teams[c], cache[b][c], cache[c][b]) {
 				fmt.Println(b)
 			} else {
 				fmt.Println(c)
@@ -56,7 +56,7 @@ func win(teamA, teamB []int, cacheA, cacheB *cacheEntry) bool {
 	} else {
 		reply = !win(teamB[:len(teamB)-s], teamA, cacheB, cacheA)
 	}
-	cache.put(len(teamA), len(teamB), reply)
+	cacheA.put(len(teamA), len(teamB), reply)
 	return reply
 }
 
@@ -68,20 +68,14 @@ type (
 
 	// cache maps from our counts to winLoss records and from their counts to winLoss records
 	cacheEntry struct {
-		our   map[int]winLose
-		their map[int]winLose
+		our   []winLoss
+		their []winLoss
 	}
 )
 
-func newCacheEntry() *cacheEntry {
-	return &cacheEntry{
-		make(map[int]winLoss),
-		make(map[int]winLoss),
-	}
-}
-
 func (c *cacheEntry) get(ourLen, theirLen int) (bool, bool) {
-	if e, ok := c.our[ourLen]; ok {
+	if len(c.our) > ourLen {
+		e := c.our[ourLen]
 		if e.win > 0 && theirLen <= e.win {
 			return true, true
 		}
@@ -89,7 +83,8 @@ func (c *cacheEntry) get(ourLen, theirLen int) (bool, bool) {
 			return false, true
 		}
 	}
-	if e, ok := c.their[theirLen]; ok {
+	if len(c.their) > theirLen {
+		e := c.their[theirLen]
 		if e.win > 0 && ourLen >= e.win {
 			return true, true
 		}
@@ -101,9 +96,33 @@ func (c *cacheEntry) get(ourLen, theirLen int) (bool, bool) {
 }
 
 func (c *cacheEntry) put(ourLen, theirLen int, win bool) {
+	if len(c.our) <= ourLen {
+		c.our = append(c.our, make([]winLoss, ourLen-len(c.our)+1)...)
+	}
 	e := c.our[ourLen]
 	if win {
-
+		if theirLen > e.win {
+			e.win = theirLen
+		}
+	} else {
+		if e.loss == 0 || theirLen < e.loss {
+			e.loss = theirLen
+		}
 	}
+	c.our[ourLen] = e
 
+	if len(c.their) <= theirLen {
+		c.their = append(c.their, make([]winLoss, theirLen-len(c.their)+1)...)
+	}
+	e = c.their[theirLen]
+	if win {
+		if e.win == 0 || ourLen < e.win {
+			e.win = ourLen
+		}
+	} else {
+		if ourLen > e.loss {
+			e.loss = ourLen
+		}
+	}
+	c.their[theirLen] = e
 }
