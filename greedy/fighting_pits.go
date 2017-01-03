@@ -1,29 +1,40 @@
 package main
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
+	"log"
+	"os"
+	"runtime/pprof"
 	"sort"
 )
 
 var (
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+
 	teams [][]int
-	cache [][]*cacheEntry
+	cache map[contest]*cacheEntry
 )
 
 func main() {
-	var n, k, q int
-	fmt.Scanln(&n, &k, &q)
-	teams = make([][]int, k+1)
-	cache = make([][]*cacheEntry, k+1)
-	for j := 1; j <= k; j++ {
-		cache[j] = make([]*cacheEntry, k+1)
-		for e := 1; e <= k; e++ {
-			cache[j][e] = &cacheEntry{}
+	flag.Parse()
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
 		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
+	f := bufio.NewReaderSize(os.Stdin, 4e6)
+	var n, k, q int
+	fmt.Fscanln(f, &n, &k, &q)
+	teams = make([][]int, k+1)
+	cache = make(map[contest]*cacheEntry)
 	for j := 0; j < n; j++ {
 		var s, t int
-		fmt.Scanln(&s, &t)
+		fmt.Fscanln(f, &s, &t)
 		teams[t] = append(teams[t], s)
 	}
 	for j := 1; j <= k; j++ {
@@ -31,18 +42,28 @@ func main() {
 	}
 	for j := 0; j < q; j++ {
 		var a, b, c int
-		fmt.Scanln(&a, &b, &c)
+		fmt.Fscanln(f, &a, &b, &c)
 		switch a {
 		case 1:
 			teams[c] = append(teams[c], b)
 		case 2:
-			if win(teams[b], teams[c], cache[b][c], cache[c][b]) {
+			if win(teams[b], teams[c], getCache(b, c), getCache(c, b)) {
 				fmt.Println(b)
 			} else {
 				fmt.Println(c)
 			}
 		}
 	}
+}
+
+func getCache(first, second int) *cacheEntry {
+	k := contest{first, second}
+	e, ok := cache[k]
+	if !ok {
+		e = &cacheEntry{}
+		cache[k] = e
+	}
+	return e
 }
 
 func win(teamA, teamB []int, cacheA, cacheB *cacheEntry) bool {
@@ -61,6 +82,10 @@ func win(teamA, teamB []int, cacheA, cacheB *cacheEntry) bool {
 }
 
 type (
+	contest struct {
+		first, second int
+	}
+
 	// given one count, what's the other count which guarantees a win or loss?
 	winLoss struct {
 		win, loss int
