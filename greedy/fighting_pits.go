@@ -11,10 +11,27 @@ import (
 )
 
 var (
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	cpuprofile      = flag.String("cpuprofile", "", "write cpu profile to file")
+	expected        = flag.String("expected", "", "file of expected answers")
+	expectedAnswers []int
+)
 
-	teams [][]int
-	cache map[contest]*cacheEntry
+type (
+	soldier struct {
+		army, strength int
+	}
+	squad struct {
+		strength, size int
+	}
+	army []squad // in increasing strength
+
+	cursor struct {
+		a        army
+		squad    int // within the team
+		size     int // remaining in the squad
+		strength int // of current squad
+		live     bool
+	}
 )
 
 func main() {
@@ -27,127 +44,137 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
+	if *expected != "" {
+		buf, err := xx.Readfile(*expected)
+		if err != nil {
+			log.Fatal(err)
+		}
+		expectedAnswers = mapInt(strings.Fields(string(buf)))
+	}
 	f := bufio.NewReaderSize(os.Stdin, 4e6)
 	var n, k, q int
 	fmt.Fscanln(f, &n, &k, &q)
-	teams = make([][]int, k+1)
-	cache = make(map[contest]*cacheEntry)
+	soldiers := make([]soldier, n)
 	for j := 0; j < n; j++ {
-		var s, t int
-		fmt.Fscanln(f, &s, &t)
-		teams[t] = append(teams[t], s)
+		fmt.Fscanln(f, &soldiers[j].strength, &soldiers[j].army)
 	}
-	for j := 1; j <= k; j++ {
-		sort.Ints(teams[j])
+	sort.Sort(byArmyThenStrength(soldiers))
+
+	armies := make([]army, k+1)
+
+	for _, s := range soldiers {
+		armies[s.army] = armies[s.army].add(s.strength)
 	}
+
 	for j := 0; j < q; j++ {
 		var a, b, c int
 		fmt.Fscanln(f, &a, &b, &c)
 		switch a {
 		case 1:
-			teams[c] = append(teams[c], b)
+			armies[c] = armies[c].add(b)
 		case 2:
-			if win(teams[b], teams[c], getCache(b, c), getCache(c, b)) {
-				fmt.Println(b)
+			if win(armies[b], armies[c]) {
+				output(b)
 			} else {
-				fmt.Println(c)
+				output(c)
 			}
 		}
 	}
 }
 
-func getCache(first, second int) *cacheEntry {
-	k := contest{first, second}
-	e, ok := cache[k]
-	if !ok {
-		e = &cacheEntry{}
-		cache[k] = e
+func output(n int) {
+	if len(expectedAnswers) > 0 {
+		if n != expectedAnswers[0] {
+			log.Fatalf("unexpected output, got %d, want %d", n, expectedAnswers[0])
+		}
+		expectedAnswers = expectedAnswers[1:]
 	}
-	return e
+	fmt.Println(n)
 }
 
-func win(teamA, teamB []int, cacheA, cacheB *cacheEntry) bool {
-	if result, ok := cacheA.get(len(teamA), len(teamB)); ok {
-		return result
+func (a army) add(s int) army {
+	if len(a) > 0 && a[len(a)-1].strength == s {
+		a[len(a)-1].size++
+		return a
 	}
-	var reply bool
-	s := teamA[len(teamA)-1]
-	if len(teamB) <= s {
-		reply = true
-	} else {
-		reply = !win(teamB[:len(teamB)-s], teamA, cacheB, cacheA)
+	if len(a) > 0 {
+		assert(a[len(a)-1].strength < s)
 	}
-	cacheA.put(len(teamA), len(teamB), reply)
-	return reply
+	return append(a, squad{strength: s, size: 1})
 }
 
-type (
-	contest struct {
-		first, second int
-	}
+func win(aa, ab army) bool {
+	a, b := aa.cursor(), ab.cursor()
+	for a.live && b.live {
+		aBefore, bBefore := a.squad, b.squad
+		rounds := min(a.size/b.strength, (b.size-1)/a.strength)
+		b.die(rounds * a.strength)
+		a.die(rounds * b.strength)
+		assert(b.live)
+		if !a.live {
+			break
+		}
+		b.die(a.strength)
+		if !b.live {
+			break
+		}
+		a.die(b.strength)
 
-	// given one count, what's the other count which guarantees a win or loss?
-	winLoss struct {
-		win, loss int
-	}
-
-	// cache maps from our counts to winLoss records and from their counts to winLoss records
-	cacheEntry struct {
-		our   []winLoss
-		their []winLoss
-	}
-)
-
-func (c *cacheEntry) get(ourLen, theirLen int) (bool, bool) {
-	if len(c.our) > ourLen {
-		e := c.our[ourLen]
-		if e.win > 0 && theirLen <= e.win {
-			return true, true
-		}
-		if e.loss > 0 && theirLen >= e.loss {
-			return false, true
+		if !(a.squad < aBefore || b.squad < bBefore) {
+			log.Panic("progress?", a.squad, aBefore, b.squad, bBefore, a, b)
 		}
 	}
-	if len(c.their) > theirLen {
-		e := c.their[theirLen]
-		if e.win > 0 && ourLen >= e.win {
-			return true, true
-		}
-		if e.loss > 0 && ourLen <= e.loss {
-			return false, true
-		}
-	}
-	return false, false
+	return a.live
 }
 
-func (c *cacheEntry) put(ourLen, theirLen int, win bool) {
-	if len(c.our) <= ourLen {
-		c.our = append(c.our, make([]winLoss, ourLen-len(c.our)+1)...)
+func assert(b bool) {
+	if !b {
+		log.Panic("assert")
 	}
-	e := c.our[ourLen]
-	if win {
-		if theirLen > e.win {
-			e.win = theirLen
-		}
-	} else {
-		if e.loss == 0 || theirLen < e.loss {
-			e.loss = theirLen
-		}
-	}
-	c.our[ourLen] = e
+}
 
-	if len(c.their) <= theirLen {
-		c.their = append(c.their, make([]winLoss, theirLen-len(c.their)+1)...)
-	}
-	e = c.their[theirLen]
-	if win {
-		if e.win == 0 || ourLen < e.win {
-			e.win = ourLen
+func (c *cursor) die(n int) {
+	for n >= c.size {
+		n -= c.size
+		c.squad--
+		if c.squad < 0 {
+			c.live = false
+			return
 		}
-	} else {
-		if ourLen > e.loss {
-			e.loss = ourLen
-		}
+		s := c.a[c.squad]
+		c.size, c.strength = s.size, s.strength
 	}
-	c.their[theirLen] = e
+	assert(n < c.size)
+	c.size -= n
+}
+
+func (a army) cursor() cursor {
+	if len(a) < 1 {
+		return cursor{live: false}
+	}
+	s := len(a) - 1
+
+	return cursor{
+		a:        a,
+		squad:    s,
+		size:     a[s].size,
+		strength: a[s].strength,
+		live:     s >= 0,
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+type byArmyThenStrength []soldier
+
+func (a byArmyThenStrength) Len() int      { return len(a) }
+func (a byArmyThenStrength) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byArmyThenStrength) Less(i, j int) bool {
+	return a[i].army < a[j].army ||
+		(a[i].army == a[j].army && a[i].strength < a[j].strength)
 }
